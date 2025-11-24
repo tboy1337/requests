@@ -166,15 +166,14 @@ class HTTPAdapter(BaseAdapter):
       >>> a = requests.adapters.HTTPAdapter(max_retries=3)
       >>> s.mount('http://', a)
 
-    The HTTPAdapter also exposes a ``urllib3_urlopen_kwargs`` attribute that can
-    be used to pass additional keyword arguments to urllib3's ``urlopen`` method.
-    This is useful for controlling urllib3-specific behavior that requests does not
-    expose directly. For example::
+    You can customize the behavior by subclassing and overriding the
+    ``_build_urlopen_kwargs`` method::
 
-      >>> class CustomAdapter(HTTPAdapter):
-      ...     def __init__(self, *args, **kwargs):
-      ...         super().__init__(*args, **kwargs)
-      ...         self.urllib3_urlopen_kwargs["enforce_content_length"] = False
+      >>> class CustomAdapter(requests.adapters.HTTPAdapter):
+      ...     def _build_urlopen_kwargs(self, request, timeout, chunked, url):
+      ...         kwargs = super()._build_urlopen_kwargs(request, timeout, chunked, url)
+      ...         kwargs["enforce_content_length"] = False
+      ...         return kwargs
       >>> s = requests.Session()
       >>> s.mount("http://", CustomAdapter())
     """
@@ -185,7 +184,6 @@ class HTTPAdapter(BaseAdapter):
         "_pool_connections",
         "_pool_maxsize",
         "_pool_block",
-        "urllib3_urlopen_kwargs",
     ]
 
     def __init__(
@@ -209,8 +207,6 @@ class HTTPAdapter(BaseAdapter):
         self._pool_block = pool_block
 
         self.init_poolmanager(pool_connections, pool_maxsize, block=pool_block)
-
-        self.urllib3_urlopen_kwargs = {}
 
     def __getstate__(self):
         return {attr: getattr(self, attr, None) for attr in self.__attrs__}
@@ -602,6 +598,38 @@ class HTTPAdapter(BaseAdapter):
 
         return headers
 
+    def _build_urlopen_kwargs(
+        self,
+        request: "PreparedRequest",
+        timeout: "TimeoutSauce",
+        chunked: bool,
+        url: str,
+    ) -> "typing.Dict[str, typing.Any]":
+        """Build kwargs dict for conn.urlopen() call.
+
+        This is an internal method that can be overridden in subclasses
+        to customize the arguments passed to the connection's urlopen method.
+
+        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.
+        :param timeout: The timeout configuration for the request.
+        :param chunked: Whether to use chunked transfer encoding.
+        :param url: The URL to request.
+        :rtype: dict
+        """
+        return {
+            "method": request.method,
+            "url": url,
+            "body": request.body,
+            "headers": request.headers,
+            "redirect": False,
+            "assert_same_host": False,
+            "preload_content": False,
+            "decode_content": False,
+            "retries": self.max_retries,
+            "timeout": timeout,
+            "chunked": chunked,
+        }
+
     def send(
         self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None
     ):
@@ -619,11 +647,6 @@ class HTTPAdapter(BaseAdapter):
         :param cert: (optional) Any user-provided SSL certificate to be trusted.
         :param proxies: (optional) The proxies dictionary to apply to the request.
         :rtype: requests.Response
-
-        .. note:: Additional keyword arguments can be passed to urllib3's ``urlopen``
-            method by populating the ``urllib3_urlopen_kwargs`` attribute on the
-            HTTPAdapter instance. These will be merged with the default arguments
-            and can override them if needed.
         """
 
         try:
@@ -660,20 +683,7 @@ class HTTPAdapter(BaseAdapter):
         else:
             timeout = TimeoutSauce(connect=timeout, read=timeout)
 
-        urlopen_kwargs = {
-            "method": request.method,
-            "url": url,
-            "body": request.body,
-            "headers": request.headers,
-            "redirect": False,
-            "assert_same_host": False,
-            "preload_content": False,
-            "decode_content": False,
-            "retries": self.max_retries,
-            "timeout": timeout,
-            "chunked": chunked,
-        }
-        urlopen_kwargs.update(self.urllib3_urlopen_kwargs)
+        urlopen_kwargs = self._build_urlopen_kwargs(request, timeout, chunked, url)
 
         try:
             resp = conn.urlopen(**urlopen_kwargs)
