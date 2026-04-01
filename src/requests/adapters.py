@@ -7,6 +7,7 @@ and maintain connections.
 """
 
 import os.path
+import re
 import socket  # noqa: F401
 import typing
 import warnings
@@ -93,8 +94,6 @@ def _has_ipv6_zone_id(url: str) -> bool:
     # The % can be URL-encoded as %25 or literal %
     # Match brackets containing a % anywhere in the URL
     # This handles both literal % and %25 encoding
-    import re
-
     return bool(re.search(r"\[[^\]]*%(?:25)?[^\]]*\]", url))
 
 
