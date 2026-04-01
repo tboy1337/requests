@@ -34,6 +34,13 @@ class TestIPv6ZoneIDDetection:
             ("http://localhost/", False),
             ("http://example.com/foo%20bar", False),  # % in path, not zone ID
             ("http://[::1]/path%20with%20percent", False),  # % in path, not in host
+            # False-positive guard: percent-encoded chars inside brackets are NOT zone IDs
+            ("http://[::1%20]/", False),  # %20 = space encoding, not a zone ID
+            ("http://[::1%2F]/", False),  # %2F = slash encoding, not a zone ID
+            ("http://[::1%2B]/", False),  # %2B = plus encoding, not a zone ID
+            ("http://[::1%41]/", False),  # %41 = 'A', two hex digits, not a zone ID
+            ("http://[fe80::1%20]:8080/", False),  # %20 in host with port
+            ("http://[::1%25]/", False),  # bare %25 with nothing after it is not a zone ID
             # Edge cases with multiple percent signs
             ("http://[fe80::1%eth0]/path%20test", True),  # Zone ID + path encoding
             ("http://[fe80::1%25eth0]/path%20test", True),  # %25 zone ID + path encoding

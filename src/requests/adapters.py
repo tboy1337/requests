@@ -90,11 +90,17 @@ def _has_ipv6_zone_id(url: str) -> bool:
     :return: True if URL contains IPv6 zone ID
     :rtype: bool
     """
-    # Look for pattern: [<text>%<text>] indicating IPv6 with zone ID
-    # The % can be URL-encoded as %25 or literal %
-    # Match brackets containing a % anywhere in the URL
-    # This handles both literal % and %25 encoding
-    return bool(re.search(r"\[[^\]]*%(?:25)?[^\]]*\]", url))
+    # Distinguish zone IDs from arbitrary percent-encoded characters inside brackets.
+    #
+    # A percent-encoded character is exactly %XX (two hex digits), e.g. %20 (space).
+    # A zone ID uses % as a delimiter followed by a network interface name, e.g. %eth0.
+    #
+    # Two forms are detected:
+    #   - Literal %: must be followed by a letter (interface names like eth0, wlan0, lo
+    #     always start with a letter on Linux/macOS), ruling out %20, %2F, etc.
+    #   - RFC 6874 encoded %25: followed by any valid interface-name chars (the %25
+    #     prefix unambiguously signals a zone-ID delimiter, not arbitrary encoding).
+    return bool(re.search(r"\[[^\]]*(?:%25[a-zA-Z0-9_.\-]+|%[a-zA-Z][a-zA-Z0-9_.\-]*)\]", url))
 
 
 def _urllib3_request_context(
