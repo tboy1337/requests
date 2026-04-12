@@ -100,7 +100,7 @@ def _has_ipv6_zone_id(url: str) -> bool:
     #     always start with a letter on Linux/macOS), ruling out %20, %2F, etc.
     #   - RFC 6874 encoded %25: followed by any valid interface-name chars (the %25
     #     prefix unambiguously signals a zone-ID delimiter, not arbitrary encoding).
-    return bool(re.search(r"\[[^\]]*(?:%25[a-zA-Z0-9_.\-]+|%[a-zA-Z][a-zA-Z0-9_.\-]*)\]", url))
+    return bool(re.search(r"\[[^\]]*(?:%25[a-zA-Z0-9_.\-]+|%[a-zA-Z][a-zA-Z0-9_.\-]+)\]", url))
 
 
 def _urllib3_request_context(
