@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -321,26 +322,37 @@ class TestIPv6ZoneIDRequests:
         assert host_params["host"] == "fe80::1%eth0"
 
     def test_ipv6_zone_id_with_percent_encoded_name(self) -> None:
-        """Regression: zone IDs whose names contain percent-encoded chars are handled correctly.
+        """Zone IDs whose names contain %XX-encoded characters (e.g. spaces) behave
+        differently depending on the Python version.
 
-        A zone ID like "Ethernet 3" is encoded as %25Ethernet%203 in a URL.
-        parse_url decodes %25 -> %, leaving [fe80::1%Ethernet%203] with two
-        % signs, which previously defeated the single-% guard in models.py.
+        Python 3.14 added _check_bracketed_netloc to urlparse, which calls
+        ipaddress.ip_address() on the bracketed host.  Python's ipaddress splits
+        on the first literal % to extract the scope ID, so a URL like
+        http://[fe80::1%25Ethernet%203]:8080/ yields scope "25Ethernet%203" which
+        contains a bare % and is rejected.
+
+        On Python < 3.14 urlparse does not perform this validation, so the full
+        pipeline (prepare -> adapter parsing) works correctly.
         """
         original_url = "http://[fe80::1%25Ethernet%203]:8080/path"
 
-        req = requests.Request("GET", original_url).prepare()
+        if sys.version_info >= (3, 14):
+            # urlparse now validates IPv6 scope IDs; % inside the scope is rejected
+            with pytest.raises((ValueError, requests.exceptions.InvalidURL)):
+                requests.Request("GET", original_url).prepare()
+        else:
+            req = requests.Request("GET", original_url).prepare()
 
-        # The prepared URL must preserve %25 so the adapter can detect the zone ID
-        assert "%25" in req.url
-        assert "Ethernet" in req.url
+            # models.py re-encodes the zone delimiter so %25 is preserved
+            assert "%25" in req.url
+            assert "Ethernet" in req.url
 
-        adapter = requests.adapters.HTTPAdapter()
-        host_params, _ = adapter.build_connection_pool_key_attributes(
-            req, verify=False
-        )
+            adapter = requests.adapters.HTTPAdapter()
+            host_params, _ = adapter.build_connection_pool_key_attributes(
+                req, verify=False
+            )
 
-        # parse_url decodes %25 -> % when returning the host for the connection
-        assert host_params["host"] == "fe80::1%Ethernet%203"
-        assert host_params["port"] == 8080
-        assert host_params["scheme"] == "http"
+            # parse_url decodes %25 -> % when returning the host for the connection
+            assert host_params["host"] == "fe80::1%Ethernet%203"
+            assert host_params["port"] == 8080
+            assert host_params["scheme"] == "http"
