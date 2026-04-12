@@ -95,8 +95,11 @@ def _has_ipv6_zone_id(url: str) -> bool:
     # string (which survive requote_uri unchanged) cannot produce false positives.
     #
     # Inside the brackets two forms are detected:
-    #   - RFC 6874 encoded %25: followed by any valid interface-name chars (%25
-    #     unambiguously signals a zone-ID delimiter, not arbitrary encoding).
+    #   - RFC 6874 encoded %25: the delimiter is %25 followed by one or more
+    #     ZoneID characters. Per RFC 6874 the ZoneID unreserved chars are
+    #     [A-Za-z0-9_.\-~] plus percent-encoded octets (%[0-9A-Fa-f]{2}), so
+    #     names like "Ethernet%203" (space encoded as %20) or names containing
+    #     tildes are matched correctly.
     #   - Literal %: a negative lookahead (?![0-9A-Fa-f]{2}) rejects valid
     #     percent-encoded bytes whose first hex digit happens to be a letter
     #     (e.g. %AB, %aF, %CD). After that guard, the first char must be a
@@ -104,7 +107,7 @@ def _has_ipv6_zone_id(url: str) -> bool:
     #     interface names (eth0, lo, wlan0) while rejecting bare %a etc.
     return bool(
         re.search(
-            r"://[^/?#]*\[[^\]]*(?:%25[a-zA-Z0-9_.\-]+|%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+)\]",
+            r"://[^/?#]*\[[^\]]*(?:%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+|%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+)\]",
             url,
         )
     )

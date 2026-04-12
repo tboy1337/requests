@@ -218,14 +218,16 @@ class TestIPv6ZoneIDRequests:
         adapter = requests.adapters.HTTPAdapter()
         req = requests.Request("GET", "https://[fe80::1%eth0]:8443/").prepare()
 
-        # This should not raise an error
+        cert = ("/path/to/client.pem", "/path/to/client.key")
         host_params, pool_kwargs = adapter.build_connection_pool_key_attributes(
-            req, verify=False, cert=None
+            req, verify=False, cert=cert
         )
 
         assert host_params["host"] == "fe80::1%eth0"
         assert host_params["scheme"] == "https"
         assert "cert_reqs" in pool_kwargs
+        assert pool_kwargs["cert_file"] == "/path/to/client.pem"
+        assert pool_kwargs["key_file"] == "/path/to/client.key"
 
     def test_ipv6_zone_id_full_request_flow_with_mocking(
         self, monkeypatch: pytest.MonkeyPatch
@@ -270,19 +272,28 @@ class TestIPv6ZoneIDRequests:
         assert captured_host == "fe80::1%eth0"
 
     def test_ipv6_zone_id_different_encodings_create_correct_pools(self) -> None:
-        """Test that %25 and % encodings both work and create correct pool keys."""
+        """Test that %25 and raw % encodings both produce the same pool key."""
         adapter = requests.adapters.HTTPAdapter()
 
-        # Test with %25-encoded zone ID (RFC 6874 compliant)
+        # RFC 6874 compliant %25-encoded zone ID
         req1 = requests.Request("GET", "http://[fe80::1%25eth0]:8080/").prepare()
         host_params1, _ = adapter.build_connection_pool_key_attributes(
             req1, verify=False
         )
 
-        # Both should result in the same internal host representation
+        # Raw (literal) % zone ID form
+        req2 = requests.Request("GET", "http://[fe80::1%eth0]:8080/").prepare()
+        host_params2, _ = adapter.build_connection_pool_key_attributes(
+            req2, verify=False
+        )
+
+        # Both encodings must resolve to the same internal host representation
         assert host_params1["host"] == "fe80::1%eth0"
         assert host_params1["port"] == 8080
         assert host_params1["scheme"] == "http"
+        assert host_params2["host"] == host_params1["host"]
+        assert host_params2["port"] == host_params1["port"]
+        assert host_params2["scheme"] == host_params1["scheme"]
 
     def test_ipv6_zone_id_preserved_through_url_preparation(self) -> None:
         """Test that zone IDs are preserved through the entire URL preparation flow."""
