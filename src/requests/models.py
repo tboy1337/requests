@@ -6,12 +6,12 @@ This module contains the primary objects that power Requests.
 """
 
 import datetime
-import re
 
 # Import encoding now, to avoid implicit import later.
 # Implicit import within threads may cause LookupError when standard library is in a ZIP,
 # such as in Embedded Python. See https://github.com/psf/requests/issues/3578.
 import encodings.idna  # noqa: F401
+import re
 from io import UnsupportedOperation
 
 from urllib3.exceptions import (
@@ -476,7 +476,7 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
                     )
                     if raw_match:
                         pos = raw_match.start()
-                        host = f"[{original_inner[:pos]}%25{original_inner[pos + 1:]}]"
+                        host = f"[{original_inner[:pos]}%25{original_inner[pos + 1 :]}]"
 
         if not scheme:
             raise MissingSchema(
