@@ -440,23 +440,43 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
         # Mitigation for RFC 6874: parse_url incorrectly decodes zone ID delimiter (%25 -> %)
         # We reconstruct the host with the correct, fully-encoded delimiter to prevent
         # downstream errors (like ipaddress validation or incorrect connection arguments).
-        # Two cases require re-encoding after parse_url's %25 -> % normalisation:
-        #   1. Alphabetic zone IDs (e.g. %eth0, %wlan0): first alternative matches
-        #      % not followed by two hex digits, then a letter, then more ID chars.
-        #   2. Numeric/hex zone IDs (e.g. %50 decoded from %2550): second alternative
-        #      matches %XX where XX is two hex digits, while excluding %25 itself to
-        #      prevent double-encoding if parse_url did not fully decode the delimiter.
-        # Any %XX sequences after the delimiter are part of the zone ID name and must
-        # be left intact (e.g. %20 for the space in "Ethernet 3").
+        #
+        # Matching on the parse_url-decoded host is ambiguous because parse_url decodes
+        # %25 -> % and then the resulting %XX may look like a valid percent-encoding
+        # (e.g. %2550 becomes %50 which resembles percent-encoded 'P'). Instead we
+        # extract the bracket content from the ORIGINAL url (before any decoding) and
+        # match there. Two input forms are handled:
+        #
+        #   1. RFC 6874 encoded form (%25 delimiter): the original bracket contains %25
+        #      followed by one or more ZoneID unreserved chars ([A-Za-z0-9_.\-~]) or
+        #      pct-encoded octets (%XX). Examples: [fe80::1%25eth0], [fe80::1%255],
+        #      [fe80::1%25_foo]. The matched segment is placed verbatim into host.
+        #
+        #   2. Raw % delimiter (legacy/non-standard): a literal % that is NOT a valid
+        #      %XX percent-encoding, followed by a letter then more identifier chars.
+        #      Examples: [fe80::1%eth0], [fe80::1%wlan0]. Re-encoded as %25<zone_name>.
+        #
+        # This avoids false-positive re-encoding of legitimate %XX sequences (e.g. %20,
+        # %AB) that should never be treated as zone ID delimiters.
         if host and host.startswith("[") and host.endswith("]"):
-            inner = host[1:-1]
-            zone_delim = re.search(
-                r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+|%(?!25)[0-9A-Fa-f]{2}",
-                inner,
-            )
-            if zone_delim:
-                pos = zone_delim.start()
-                host = f"[{inner[:pos]}%25{inner[pos + 1:]}]"
+            original_bracket = re.search(r"://[^/?#]*\[([^\]]*)\]", url)
+            if original_bracket:
+                original_inner = original_bracket.group(1)
+                rfc_match = re.search(
+                    r"%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+",
+                    original_inner,
+                )
+                if rfc_match:
+                    ip_part = original_inner[: rfc_match.start()]
+                    host = f"[{ip_part}{rfc_match.group()}]"
+                else:
+                    raw_match = re.search(
+                        r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+",
+                        original_inner,
+                    )
+                    if raw_match:
+                        pos = raw_match.start()
+                        host = f"[{original_inner[:pos]}%25{original_inner[pos + 1:]}]"
 
         if not scheme:
             raise MissingSchema(
