@@ -86,6 +86,10 @@ class TestIPv6ZoneIDDetection:
                 "http://[fe80::1%2550]:8080/",
                 True,
             ),  # zone ID "50" (numeric), %2550 = %25 + 50
+            # Raw numeric zone IDs (Linux zone indices)
+            ("http://[fe80::1%1]:8080/", True),  # single-digit zone index
+            ("http://[fe80::1%3]:8080/", True),  # single-digit zone index
+            ("http://[fe80::1%9]:8080/", True),  # single-digit zone index
         ],
     )
     def test_has_ipv6_zone_id(self, url: str, has_zone_id: bool) -> None:

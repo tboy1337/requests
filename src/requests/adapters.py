@@ -86,13 +86,13 @@ DEFAULT_POOL_TIMEOUT = None
 #     tildes are matched correctly.
 #   - Literal %: a negative lookahead (?![0-9A-Fa-f]{2}) rejects valid
 #     percent-encoded bytes whose first hex digit happens to be a letter
-#     (e.g. %AB, %aF, %CD). After that guard, the first char must be a
-#     letter and at least one more character must follow, matching real
-#     interface names (eth0, lo, wlan0) while rejecting bare %a etc.
+#     (e.g. %AB, %aF, %CD). After that guard, one alphanumeric character
+#     is required (covering both named interfaces like eth0 and numeric
+#     zone indices like 1 or 3), followed by zero or more identifier chars.
 _IPV6_ZONE_ID_RE = re.compile(
     r"://[^/?#]*\[[^\]]*"
     r"(?:%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+"
-    r"|%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+)\]"
+    r"|%(?![0-9A-Fa-f]{2})[0-9A-Za-z][A-Za-z0-9_.\-]*)\]"
 )
 
 

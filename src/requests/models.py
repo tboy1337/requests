@@ -89,7 +89,7 @@ _AUTHORITY_BRACKET_RE = re.compile(r"://[^/?#]*\[([^\]]*)\]")
 # Matches an RFC 6874 zone ID delimiter (%25) followed by zone ID characters.
 _RFC6874_ZONE_ID_RE = re.compile(r"%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+")
 # Matches a raw % zone ID delimiter (not a valid percent-encoded byte).
-_RAW_ZONE_ID_RE = re.compile(r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+")
+_RAW_ZONE_ID_RE = re.compile(r"%(?![0-9A-Fa-f]{2})[0-9A-Za-z][A-Za-z0-9_.\-]*")
 
 
 class RequestEncodingMixin:
