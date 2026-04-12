@@ -120,7 +120,6 @@ def _urllib3_request_context(
     client_cert: "tuple[str, str] | str | None",
     poolmanager: "PoolManager",
 ) -> "(dict[str, typing.Any], dict[str, typing.Any])":
-
     host_params = {}
     pool_kwargs = {}
 
