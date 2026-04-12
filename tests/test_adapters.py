@@ -52,6 +52,16 @@ class TestIPv6ZoneIDDetection:
             # Additional %25 encoding tests
             ("http://[fe80::1%25lo]:9090/", True),  # %25 with different port
             ("https://[2001:db8::1%25wlan0]:443/path", True),  # HTTPS with %25 zone ID
+            # Brackets in path/query must NOT trigger zone-ID detection (Bug 1 guard)
+            ("http://example.com/api/[data%25value]", False),  # brackets in path
+            ("http://[::1]/path/[data%25value]", False),  # brackets in path after real host
+            ("http://example.com/search?q=[tag%25foo]", False),  # brackets in query
+            # Hex-letter percent-encoded bytes inside host brackets are NOT zone IDs (Bug 2 guard)
+            ("http://[::1%AB]/", False),  # %AB = valid hex byte, not a zone ID
+            ("http://[::1%aF]/", False),  # %aF = valid hex byte (mixed case), not a zone ID
+            ("http://[::1%CD]/", False),  # %CD = valid hex byte, not a zone ID
+            ("http://[::1%EF]/", False),  # %EF = valid hex byte, not a zone ID
+            ("http://[fe80::1%AB]:8080/", False),  # %AB with port, still not a zone ID
         ],
     )
     def test_has_ipv6_zone_id(self, url: str, has_zone_id: bool) -> None:

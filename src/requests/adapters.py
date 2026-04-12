@@ -90,17 +90,24 @@ def _has_ipv6_zone_id(url: str) -> bool:
     :return: True if URL contains IPv6 zone ID
     :rtype: bool
     """
-    # Distinguish zone IDs from arbitrary percent-encoded characters inside brackets.
+    # The match is anchored to the authority section of the URL (the part between
+    # "://" and the first "/", "?", or "#") so that brackets in the path or query
+    # string (which survive requote_uri unchanged) cannot produce false positives.
     #
-    # A percent-encoded character is exactly %XX (two hex digits), e.g. %20 (space).
-    # A zone ID uses % as a delimiter followed by a network interface name, e.g. %eth0.
-    #
-    # Two forms are detected:
-    #   - Literal %: must be followed by a letter (interface names like eth0, wlan0, lo
-    #     always start with a letter on Linux/macOS), ruling out %20, %2F, etc.
-    #   - RFC 6874 encoded %25: followed by any valid interface-name chars (the %25
-    #     prefix unambiguously signals a zone-ID delimiter, not arbitrary encoding).
-    return bool(re.search(r"\[[^\]]*(?:%25[a-zA-Z0-9_.\-]+|%[a-zA-Z][a-zA-Z0-9_.\-]+)\]", url))
+    # Inside the brackets two forms are detected:
+    #   - RFC 6874 encoded %25: followed by any valid interface-name chars (%25
+    #     unambiguously signals a zone-ID delimiter, not arbitrary encoding).
+    #   - Literal %: a negative lookahead (?![0-9A-Fa-f]{2}) rejects valid
+    #     percent-encoded bytes whose first hex digit happens to be a letter
+    #     (e.g. %AB, %aF, %CD). After that guard, the first char must be a
+    #     letter and at least one more character must follow, matching real
+    #     interface names (eth0, lo, wlan0) while rejecting bare %a etc.
+    return bool(
+        re.search(
+            r"://[^/?#]*\[[^\]]*(?:%25[a-zA-Z0-9_.\-]+|%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+)\]",
+            url,
+        )
+    )
 
 
 def _urllib3_request_context(
