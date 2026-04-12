@@ -589,7 +589,10 @@ class HTTPAdapter(BaseAdapter):
         :rtype: str
         """
         proxy = select_proxy(request.url, proxies)
-        scheme = urlparse(request.url).scheme
+        if _has_ipv6_zone_id(request.url):
+            scheme = parse_url(request.url).scheme
+        else:
+            scheme = urlparse(request.url).scheme
 
         is_proxied_http_request = proxy and scheme != "https"
         using_socks_proxy = False
