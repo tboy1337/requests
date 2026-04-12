@@ -1,4 +1,7 @@
+from unittest.mock import MagicMock
+
 import pytest
+from urllib3 import HTTPResponse
 
 import requests
 import requests.adapters
@@ -218,10 +221,6 @@ class TestIPv6ZoneIDRequests:
         self, mocker: "pytest.MockerFixture"
     ) -> None:
         """Integration test: Full request flow from PreparedRequest to connection pool."""
-        from unittest.mock import MagicMock
-
-        from urllib3 import HTTPResponse
-
         # Create adapter and prepare request with %25-encoded zone ID
         adapter = requests.adapters.HTTPAdapter()
         url = "http://[fe80::1%25eth0]:8080/api/test"
