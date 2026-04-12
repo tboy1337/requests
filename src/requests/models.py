@@ -440,13 +440,15 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
         # Mitigation for RFC 6874: parse_url incorrectly decodes zone ID delimiter (%25 -> %)
         # We reconstruct the host with the correct, fully-encoded delimiter to prevent
         # downstream errors (like ipaddress validation or incorrect connection arguments).
-        # The zone ID delimiter is the first % inside the brackets that is NOT followed
-        # by exactly two hex digits (which would make it a regular percent-encoded octet).
+        # The raw-form guard mirrors the exact pattern used in adapters._has_ipv6_zone_id:
+        #   - % not followed by two hex digits (rules out valid %XX percent-encodings)
+        #   - followed by a letter (interface names always start with a letter)
+        #   - followed by one or more alphanumeric/special chars (rejects bare %a, etc.)
         # Any %XX sequences after the delimiter are part of the zone ID name itself and
         # must be left intact (e.g. %20 for a space in "Ethernet 3").
         if host and host.startswith("[") and host.endswith("]"):
             inner = host[1:-1]
-            zone_delim = re.search(r"%(?![0-9A-Fa-f]{2})", inner)
+            zone_delim = re.search(r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+", inner)
             if zone_delim:
                 pos = zone_delim.start()
                 host = f"[{inner[:pos]}%25{inner[pos + 1:]}]"
