@@ -114,7 +114,6 @@ def _urllib3_request_context(
     request: "PreparedRequest",
     verify: "bool | str | None",
     client_cert: "tuple[str, str] | str | None",
-    poolmanager: "PoolManager",
 ) -> "(dict[str, typing.Any], dict[str, typing.Any])":
     """
     Build the pool key attributes and SSL context for a urllib3 request.
@@ -126,7 +125,6 @@ def _urllib3_request_context(
     :param request: The PreparedRequest object
     :param verify: SSL verification settings
     :param client_cert: Client certificate settings
-    :param poolmanager: The PoolManager instance
     :return: Tuple of (host_params dict, pool_kwargs dict)
     :rtype: tuple
     """
@@ -481,7 +479,7 @@ class HTTPAdapter(BaseAdapter):
             portion of the Pool Key including scheme, hostname, and port. The
             second is a dictionary of SSLContext related parameters.
         """
-        return _urllib3_request_context(request, verify, cert, self.poolmanager)
+        return _urllib3_request_context(request, verify, cert)
 
     def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
         """Returns a urllib3 connection for the given request and TLS settings.

@@ -19,7 +19,7 @@ class TestIPv6ZoneIDDetection:
     """Test the helper function that detects IPv6 zone identifiers."""
 
     @pytest.mark.parametrize(
-        "url, has_zone_id",
+        ("url", "has_zone_id"),
         [
             # URLs with IPv6 zone identifiers
             ("http://[fe80::1%eth0]:8080/", True),
@@ -73,7 +73,7 @@ class TestIPv6ZoneIDParsing:
     """Test that IPv6 addresses with zone identifiers are parsed correctly."""
 
     @pytest.mark.parametrize(
-        "url, expected_host, expected_port, expected_scheme",
+        ("url", "expected_host", "expected_port", "expected_scheme"),
         [
             # IPv6 with zone identifiers
             (
@@ -228,7 +228,7 @@ class TestIPv6ZoneIDRequests:
         assert "cert_reqs" in pool_kwargs
 
     def test_ipv6_zone_id_full_request_flow_with_mocking(
-        self, mocker: "pytest.MockerFixture"
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Integration test: Full request flow from PreparedRequest to connection pool."""
         # Create adapter and prepare request with %25-encoded zone ID
@@ -259,24 +259,15 @@ class TestIPv6ZoneIDRequests:
             mock_conn.urlopen.return_value = mock_response
             return mock_conn
 
-        mocker.patch.object(
+        monkeypatch.setattr(
             adapter.poolmanager,
             "connection_from_host",
-            side_effect=mock_connection_from_host,
+            mock_connection_from_host,
         )
 
-        # Execute the send method (which goes through the full flow)
-        try:
-            response = adapter.send(req, verify=False)
-            # Verify we got a response (connection was successful)
-            assert response.status_code == 200
-            # Verify the host parameter passed to connection pool included zone ID
-            assert captured_host == "fe80::1%eth0"
-        except Exception as e:
-            # If there's an error, it should not be related to zone ID parsing
-            # (some errors like actual connection errors are acceptable in tests)
-            assert "zone" not in str(e).lower()
-            assert "invalid" not in str(e).lower()
+        response = adapter.send(req, verify=False)
+        assert response.status_code == 200
+        assert captured_host == "fe80::1%eth0"
 
     def test_ipv6_zone_id_different_encodings_create_correct_pools(self) -> None:
         """Test that %25 and % encodings both work and create correct pool keys."""
