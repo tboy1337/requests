@@ -440,15 +440,20 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
         # Mitigation for RFC 6874: parse_url incorrectly decodes zone ID delimiter (%25 -> %)
         # We reconstruct the host with the correct, fully-encoded delimiter to prevent
         # downstream errors (like ipaddress validation or incorrect connection arguments).
-        # The raw-form guard mirrors the exact pattern used in adapters._has_ipv6_zone_id:
-        #   - % not followed by two hex digits (rules out valid %XX percent-encodings)
-        #   - followed by a letter (interface names always start with a letter)
-        #   - followed by one or more alphanumeric/special chars (rejects bare %a, etc.)
-        # Any %XX sequences after the delimiter are part of the zone ID name itself and
-        # must be left intact (e.g. %20 for a space in "Ethernet 3").
+        # Two cases require re-encoding after parse_url's %25 -> % normalisation:
+        #   1. Alphabetic zone IDs (e.g. %eth0, %wlan0): first alternative matches
+        #      % not followed by two hex digits, then a letter, then more ID chars.
+        #   2. Numeric/hex zone IDs (e.g. %50 decoded from %2550): second alternative
+        #      matches %XX where XX is two hex digits, while excluding %25 itself to
+        #      prevent double-encoding if parse_url did not fully decode the delimiter.
+        # Any %XX sequences after the delimiter are part of the zone ID name and must
+        # be left intact (e.g. %20 for the space in "Ethernet 3").
         if host and host.startswith("[") and host.endswith("]"):
             inner = host[1:-1]
-            zone_delim = re.search(r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+", inner)
+            zone_delim = re.search(
+                r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+|%(?!25)[0-9A-Fa-f]{2}",
+                inner,
+            )
             if zone_delim:
                 pos = zone_delim.start()
                 host = f"[{inner[:pos]}%25{inner[pos + 1:]}]"

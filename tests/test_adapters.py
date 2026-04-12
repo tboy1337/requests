@@ -66,6 +66,8 @@ class TestIPv6ZoneIDDetection:
             # Zone IDs whose names contain percent-encoded characters (e.g. spaces)
             ("http://[fe80::1%25Ethernet%203]:8080/", True),  # zone ID "Ethernet 3"
             ("http://[fe80::1%25eth%200]:8080/", True),  # zone ID "eth 0"
+            # Numeric zone IDs encoded via %25 (RFC 6874) - regression for %2550 handling
+            ("http://[fe80::1%2550]:8080/", True),  # zone ID "50" (numeric), %2550 = %25 + 50
         ],
     )
     def test_has_ipv6_zone_id(self, url: str, has_zone_id: bool) -> None:
@@ -166,6 +168,14 @@ class TestIPv6ZoneIDParsing:
                 "http://[fe80::1%25eth0]/path%20test",
                 "fe80::1%eth0",  # %25 in zone ID decoded, %20 in path preserved
                 None,
+                "http",
+            ),
+            # Numeric zone ID via %2550 (regression: models.py must re-encode %50 -> %2550
+            # so Python 3.14's urlparse does not decode %50 to 'P' and reject the address)
+            (
+                "http://[fe80::1%2550]:8080/",
+                "fe80::1%50",  # %25 decoded to % by parse_url, zone name is "50"
+                8080,
                 "http",
             ),
         ],
