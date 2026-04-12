@@ -74,6 +74,27 @@ DEFAULT_POOLSIZE = 10
 DEFAULT_RETRIES = 0
 DEFAULT_POOL_TIMEOUT = None
 
+# Anchored to the authority section of the URL (between "://" and the first
+# "/", "?", or "#") so that brackets in the path or query string cannot
+# produce false positives.
+#
+# Inside the brackets two forms are detected:
+#   - RFC 6874 encoded %25: the delimiter is %25 followed by one or more
+#     ZoneID characters. Per RFC 6874 the ZoneID unreserved chars are
+#     [A-Za-z0-9_.\-~] plus percent-encoded octets (%[0-9A-Fa-f]{2}), so
+#     names like "Ethernet%203" (space encoded as %20) or names containing
+#     tildes are matched correctly.
+#   - Literal %: a negative lookahead (?![0-9A-Fa-f]{2}) rejects valid
+#     percent-encoded bytes whose first hex digit happens to be a letter
+#     (e.g. %AB, %aF, %CD). After that guard, the first char must be a
+#     letter and at least one more character must follow, matching real
+#     interface names (eth0, lo, wlan0) while rejecting bare %a etc.
+_IPV6_ZONE_ID_RE = re.compile(
+    r"://[^/?#]*\[[^\]]*"
+    r"(?:%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+"
+    r"|%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+)\]"
+)
+
 
 def _has_ipv6_zone_id(url: str) -> bool:
     """
@@ -90,33 +111,14 @@ def _has_ipv6_zone_id(url: str) -> bool:
     :return: True if URL contains IPv6 zone ID
     :rtype: bool
     """
-    # The match is anchored to the authority section of the URL (the part between
-    # "://" and the first "/", "?", or "#") so that brackets in the path or query
-    # string (which survive requote_uri unchanged) cannot produce false positives.
-    #
-    # Inside the brackets two forms are detected:
-    #   - RFC 6874 encoded %25: the delimiter is %25 followed by one or more
-    #     ZoneID characters. Per RFC 6874 the ZoneID unreserved chars are
-    #     [A-Za-z0-9_.\-~] plus percent-encoded octets (%[0-9A-Fa-f]{2}), so
-    #     names like "Ethernet%203" (space encoded as %20) or names containing
-    #     tildes are matched correctly.
-    #   - Literal %: a negative lookahead (?![0-9A-Fa-f]{2}) rejects valid
-    #     percent-encoded bytes whose first hex digit happens to be a letter
-    #     (e.g. %AB, %aF, %CD). After that guard, the first char must be a
-    #     letter and at least one more character must follow, matching real
-    #     interface names (eth0, lo, wlan0) while rejecting bare %a etc.
-    return bool(
-        re.search(
-            r"://[^/?#]*\[[^\]]*(?:%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+|%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+)\]",
-            url,
-        )
-    )
+    return bool(_IPV6_ZONE_ID_RE.search(url))
 
 
 def _urllib3_request_context(
     request: "PreparedRequest",
     verify: "bool | str | None",
     client_cert: "tuple[str, str] | str | None",
+    poolmanager: "PoolManager | None" = None,
 ) -> "(dict[str, typing.Any], dict[str, typing.Any])":
     """
     Build the pool key attributes and SSL context for a urllib3 request.
@@ -128,6 +130,8 @@ def _urllib3_request_context(
     :param request: The PreparedRequest object
     :param verify: SSL verification settings
     :param client_cert: Client certificate settings
+    :param poolmanager: Unused. Kept for backward compatibility with
+        subclasses that may call this function directly.
     :return: Tuple of (host_params dict, pool_kwargs dict)
     :rtype: tuple
     """

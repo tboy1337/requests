@@ -83,6 +83,18 @@ DEFAULT_REDIRECT_LIMIT = 30
 CONTENT_CHUNK_SIZE = 10 * 1024
 ITER_CHUNK_SIZE = 512
 
+# Regex patterns for IPv6 zone ID handling in prepare_url.
+# Extracts the bracket content from the authority section of the URL.
+_AUTHORITY_BRACKET_RE = re.compile(r"://[^/?#]*\[([^\]]*)\]")
+# Matches an RFC 6874 zone ID delimiter (%25) followed by zone ID characters.
+_RFC6874_ZONE_ID_RE = re.compile(
+    r"%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+"
+)
+# Matches a raw % zone ID delimiter (not a valid percent-encoded byte).
+_RAW_ZONE_ID_RE = re.compile(
+    r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+"
+)
+
 
 class RequestEncodingMixin:
     @property
@@ -459,21 +471,15 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
         # This avoids false-positive re-encoding of legitimate %XX sequences (e.g. %20,
         # %AB) that should never be treated as zone ID delimiters.
         if host and host.startswith("[") and host.endswith("]"):
-            original_bracket = re.search(r"://[^/?#]*\[([^\]]*)\]", url)
+            original_bracket = _AUTHORITY_BRACKET_RE.search(url)
             if original_bracket:
                 original_inner = original_bracket.group(1)
-                rfc_match = re.search(
-                    r"%25(?:[a-zA-Z0-9_.\-~]|%[0-9A-Fa-f]{2})+",
-                    original_inner,
-                )
+                rfc_match = _RFC6874_ZONE_ID_RE.search(original_inner)
                 if rfc_match:
                     ip_part = original_inner[: rfc_match.start()]
                     host = f"[{ip_part}{rfc_match.group()}]"
                 else:
-                    raw_match = re.search(
-                        r"%(?![0-9A-Fa-f]{2})[a-zA-Z][a-zA-Z0-9_.\-]+",
-                        original_inner,
-                    )
+                    raw_match = _RAW_ZONE_ID_RE.search(original_inner)
                     if raw_match:
                         pos = raw_match.start()
                         host = f"[{original_inner[:pos]}%25{original_inner[pos + 1 :]}]"

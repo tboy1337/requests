@@ -366,3 +366,60 @@ class TestIPv6ZoneIDRequests:
             assert host_params["host"] == "fe80::1%Ethernet%203"
             assert host_params["port"] == 8080
             assert host_params["scheme"] == "http"
+
+    @pytest.mark.parametrize(
+        ("url", "expected_path"),
+        [
+            ("http://[fe80::1%25eth0]:8080/api/test", "/api/test"),
+            ("http://[fe80::1%25eth0]:8080/", "/"),
+            ("http://[fe80::1%25eth0]/path?q=1", "/path?q=1"),
+            ("http://[fe80::1%25lo]:9090/a/b/c", "/a/b/c"),
+        ],
+    )
+    def test_ipv6_zone_id_request_url(
+        self, url: str, expected_path: str
+    ) -> None:
+        """Test that request_url() extracts the correct path for zone ID URLs."""
+        adapter = requests.adapters.HTTPAdapter()
+        req = requests.Request("GET", url).prepare()
+        assert adapter.request_url(req, {}) == expected_path
+
+    def test_ipv6_zone_id_proxy_connection(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that zone ID URLs work through the proxy path in
+        get_connection_with_tls_context."""
+        adapter = requests.adapters.HTTPAdapter()
+        url = "http://[fe80::1%25eth0]:8080/api/test"
+        req = requests.Request("GET", url).prepare()
+
+        captured_host_params: dict = {}
+
+        original_connection_from_host = (
+            adapter.poolmanager.connection_from_host
+        )
+
+        def mock_proxy_connection_from_host(
+            *args: object, **kwargs: object
+        ) -> MagicMock:
+            captured_host_params["host"] = kwargs.get("host")
+            captured_host_params["scheme"] = kwargs.get("scheme")
+            captured_host_params["port"] = kwargs.get("port")
+            mock_conn = MagicMock()
+            return mock_conn
+
+        mock_proxy_manager = MagicMock()
+        mock_proxy_manager.connection_from_host = (
+            mock_proxy_connection_from_host
+        )
+        monkeypatch.setattr(
+            adapter, "proxy_manager_for", lambda proxy, **kw: mock_proxy_manager
+        )
+
+        conn = adapter.get_connection_with_tls_context(
+            req, verify=False, proxies={"http": "http://proxy.example.com:3128"}
+        )
+
+        assert captured_host_params["host"] == "fe80::1%eth0"
+        assert captured_host_params["scheme"] == "http"
+        assert captured_host_params["port"] == 8080
