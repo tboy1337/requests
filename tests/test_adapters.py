@@ -62,6 +62,9 @@ class TestIPv6ZoneIDDetection:
             ("http://[::1%CD]/", False),  # %CD = valid hex byte, not a zone ID
             ("http://[::1%EF]/", False),  # %EF = valid hex byte, not a zone ID
             ("http://[fe80::1%AB]:8080/", False),  # %AB with port, still not a zone ID
+            # Zone IDs whose names contain percent-encoded characters (e.g. spaces)
+            ("http://[fe80::1%25Ethernet%203]:8080/", True),  # zone ID "Ethernet 3"
+            ("http://[fe80::1%25eth%200]:8080/", True),  # zone ID "eth 0"
         ],
     )
     def test_has_ipv6_zone_id(self, url: str, has_zone_id: bool) -> None:
@@ -316,3 +319,28 @@ class TestIPv6ZoneIDRequests:
 
         # The host should have single % (decoded for connection)
         assert host_params["host"] == "fe80::1%eth0"
+
+    def test_ipv6_zone_id_with_percent_encoded_name(self) -> None:
+        """Regression: zone IDs whose names contain percent-encoded chars are handled correctly.
+
+        A zone ID like "Ethernet 3" is encoded as %25Ethernet%203 in a URL.
+        parse_url decodes %25 -> %, leaving [fe80::1%Ethernet%203] with two
+        % signs, which previously defeated the single-% guard in models.py.
+        """
+        original_url = "http://[fe80::1%25Ethernet%203]:8080/path"
+
+        req = requests.Request("GET", original_url).prepare()
+
+        # The prepared URL must preserve %25 so the adapter can detect the zone ID
+        assert "%25" in req.url
+        assert "Ethernet" in req.url
+
+        adapter = requests.adapters.HTTPAdapter()
+        host_params, _ = adapter.build_connection_pool_key_attributes(
+            req, verify=False
+        )
+
+        # parse_url decodes %25 -> % when returning the host for the connection
+        assert host_params["host"] == "fe80::1%Ethernet%203"
+        assert host_params["port"] == 8080
+        assert host_params["scheme"] == "http"

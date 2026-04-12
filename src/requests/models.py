@@ -6,6 +6,7 @@ This module contains the primary objects that power Requests.
 """
 
 import datetime
+import re
 
 # Import encoding now, to avoid implicit import later.
 # Implicit import within threads may cause LookupError when standard library is in a ZIP,
@@ -439,11 +440,16 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
         # Mitigation for RFC 6874: parse_url incorrectly decodes zone ID delimiter (%25 -> %)
         # We reconstruct the host with the correct, fully-encoded delimiter to prevent
         # downstream errors (like ipaddress validation or incorrect connection arguments).
-        if host and host.startswith("[") and host.endswith("]") and host.count("%") == 1:
-            # Extract the zone ID, which is the part after the single %
-            host_ip_with_zone = host.strip("[]")
-            host_ip, zone_id = host_ip_with_zone.split("%", 1)
-            host = f"[{host_ip}%25{zone_id}]"
+        # The zone ID delimiter is the first % inside the brackets that is NOT followed
+        # by exactly two hex digits (which would make it a regular percent-encoded octet).
+        # Any %XX sequences after the delimiter are part of the zone ID name itself and
+        # must be left intact (e.g. %20 for a space in "Ethernet 3").
+        if host and host.startswith("[") and host.endswith("]"):
+            inner = host[1:-1]
+            zone_delim = re.search(r"%(?![0-9A-Fa-f]{2})", inner)
+            if zone_delim:
+                pos = zone_delim.start()
+                host = f"[{inner[:pos]}%25{inner[pos + 1:]}]"
 
         if not scheme:
             raise MissingSchema(
